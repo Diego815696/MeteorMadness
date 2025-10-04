@@ -15,6 +15,10 @@ document.body.appendChild(renderer.domElement);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 
+// UI Elements
+const asteroidNameDiv = document.getElementById('asteroid-name');
+const asteroidInfoDiv = document.getElementById('asteroid-info');
+
 const earthGroup = new THREE.Group();
 earthGroup.rotation.z = (-23.4 * Math.PI) / 180;
 scene.add(earthGroup);
@@ -97,17 +101,46 @@ const glowSphereMaterial = new THREE.MeshBasicMaterial({
 const glowSphere = new THREE.Mesh(glowSphereGeometry, glowSphereMaterial);
 meteorGroup.add(glowSphere);
 
-// Impact target marker
+// Sprite de texto para el nombre del asteroide
+const canvas = document.createElement('canvas');
+const context = canvas.getContext('2d');
+canvas.width = 512;
+canvas.height = 128;
+
+function updateAsteroidNameSprite(name) {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.font = 'Bold 40px Arial';
+    context.fillStyle = 'rgba(255, 107, 53, 1)';
+    context.textAlign = 'center';
+    context.fillText(name, canvas.width / 2, canvas.height / 2);
+    
+    context.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    context.lineWidth = 4;
+    context.strokeText(name, canvas.width / 2, canvas.height / 2);
+    
+    spriteTexture.needsUpdate = true;
+}
+
+const spriteTexture = new THREE.CanvasTexture(canvas);
+const spriteMaterial = new THREE.SpriteMaterial({ 
+    map: spriteTexture,
+    transparent: true,
+    depthTest: false
+});
+const asteroidNameSprite = new THREE.Sprite(spriteMaterial);
+asteroidNameSprite.scale.set(2, 0.5, 1);
+asteroidNameSprite.position.set(0, 0.4, 0);
+meteorGroup.add(asteroidNameSprite);
+
 // Impact target marker
 let impactLat = 30; 
 let impactLon = 45; 
-const earthRadius = 0.0; // Cambiado a 0.0 para apuntar al centro
+const earthRadius = 1;
 
 function getImpactPosition(lat, lon) {
     const latRad = (lat * Math.PI) / 180;
     const lonRad = (lon * Math.PI) / 180;
     
-    // Apunta directamente al centro de la Tierra
     const x = earthRadius * Math.cos(latRad) * Math.cos(lonRad);
     const y = earthRadius * Math.sin(latRad);
     const z = earthRadius * Math.cos(latRad) * Math.sin(lonRad);
@@ -153,13 +186,91 @@ const zoomSpeed = 0.02;
 let time = 0;
 let impacted = false;
 let resetTimer = 0;
-let canLaunchMeteor = true;
+let canLaunchMeteor = false;
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
+// NASA API Data
+const API_KEY = 'IqAp5gerc5b0ohBPVXMinTc0IQfHmSMQmdJYm6Lw';
+let asteroidsData = [];
+let currentAsteroidIndex = 0;
+
+
+
+function updateAsteroidUI(asteroid) {
+    if (!asteroid) {
+        asteroidNameDiv.innerHTML = '🌠 No hay asteroides disponibles';
+        asteroidInfoDiv.innerHTML = '';
+        return;
+    }
+    // Pillamos los datos que hemos recibido de la api y los guardamos en variables para mostrar en el UI
+    const name = asteroid.name.replace(/[()]/g, '');
+    const distance = parseFloat(asteroid.close_approach_data[0].miss_distance.kilometers).toLocaleString();
+    const diameter = asteroid.estimated_diameter.meters.estimated_diameter_max.toFixed(0);
+    const velocity = parseFloat(asteroid.close_approach_data[0].relative_velocity.kilometers_per_hour).toLocaleString();
+    const date = asteroid.close_approach_data[0].close_approach_date;
+    const isDangerous = asteroid.is_potentially_hazardous_asteroid;
+    
+    asteroidNameDiv.innerHTML = `🌠 ${name}`;
+    asteroidInfoDiv.innerHTML = `
+        📏 Distancia: ${distance} km<br>
+        📐 Diámetro: ~${diameter} m<br>
+        🚀 Velocidad: ${velocity} km/h<br>
+        📅 Aproximación: ${date}<br>
+        ${isDangerous ? '⚠️ <span style="color: #ff4444;">POTENCIALMENTE PELIGROSO</span>' : '✅ <span style="color: #44ff44;">Seguro</span>'}
+    `;
+}
+
+//Filtramos para obtener los asteroides mascercanos a la tierra ya que son los mas peligrosos
+async function fetchClosestAsteroids() {
+    try {
+        asteroidNameDiv.innerHTML = '🌠 Cargando asteroides de NASA...';
+        asteroidInfoDiv.innerHTML = 'Por favor espera...';
+        //Filtramos paa los mas actuales
+        const today = new Date();
+        const startDate = today.toISOString().split('T')[0];
+        const endDate = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        //Llamada a la api y guardamos el json en una variable y posteriormente en unn array
+        const url = `https://api.nasa.gov/neo/rest/v1/feed?start_date=${startDate}&end_date=${endDate}&api_key=${API_KEY}`;
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        let allAsteroids = [];
+        for (const date in data.near_earth_objects) {
+            allAsteroids = allAsteroids.concat(data.near_earth_objects[date]);
+        }
+        //Ordenamos por distancia
+        allAsteroids.sort((a, b) => {
+            const distA = parseFloat(a.close_approach_data[0].miss_distance.kilometers);
+            const distB = parseFloat(b.close_approach_data[0].miss_distance.kilometers);
+            return distA - distB;
+        });
+        //Pillamos los 5 mas cercanos
+        asteroidsData = allAsteroids.slice(0, 5);
+        currentAsteroidIndex = 0;
+        //Confirmamos que los hemos recibido bien
+        if (asteroidsData.length > 0) {
+            updateAsteroidUI(asteroidsData[currentAsteroidIndex]);
+            canLaunchMeteor = true;
+            const asteroidName = asteroidsData[0].name.replace(/[()]/g, '').substring(0, 30);
+            updateAsteroidNameSprite(asteroidName);
+        } else {
+            asteroidNameDiv.innerHTML = '🌠 No se encontraron asteroides';
+            asteroidInfoDiv.innerHTML = '';
+        }
+        
+        
+    } catch (error) {
+        console.error('❌ Error al obtener datos de asteroides:', error);
+        asteroidNameDiv.innerHTML = '❌ Error al cargar asteroides';
+        asteroidInfoDiv.innerHTML = 'Intenta recargar la página';
+    }
+}
+
 function onMouseClick(event) {
-    if (!canLaunchMeteor) return;
+    if (!canLaunchMeteor || impacted) return;
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
@@ -173,20 +284,27 @@ function onMouseClick(event) {
         markerMesh.visible = true;
     }
 }
-
+//Lanzamos el asteroide pulsando el espacio
 function onKeyPress(event) {
-    if (event.code === 'Space' && canLaunchMeteor && !impacted) {
+    if (event.code === 'Space' && canLaunchMeteor && !impacted && asteroidsData.length > 0) {
         canLaunchMeteor = false;
         time = 0;
         meteorGroup.visible = true;
         meteorGroup.position.copy(startPos);
-        markerMesh.visible = false; 
+        markerMesh.visible = false;
+        
+        const asteroidName = asteroidsData[currentAsteroidIndex].name.replace(/[()]/g, '').substring(0, 30);
+        updateAsteroidNameSprite(asteroidName);
+        
+        currentAsteroidIndex = (currentAsteroidIndex + 1) % asteroidsData.length;
     }
 }
 
 window.addEventListener('click', onMouseClick);
 window.addEventListener('keypress', onKeyPress);
 
+fetchClosestAsteroids();
+//Ejectamos animacion
 function animate() {
     requestAnimationFrame(animate);
 
@@ -202,18 +320,17 @@ function animate() {
     lightsMesh.rotation.y += 0.003;
     cloudsMesh.rotation.y += 0.0023;
     stars.rotation.y -= 0.0005;
-
+    //Comprobar si impacta para poder volver a lanzar la animacion
     if (!impacted) {
-        if (!canLaunchMeteor) {
+        if (!canLaunchMeteor && meteorGroup.visible) {
             time += 0.016;
             const t = Math.min(time * 0.15, 1);
             meteorGroup.position.lerpVectors(startPos, new THREE.Vector3(impactX, impactY, impactZ), t);
             meteorMesh.rotation.x += 0.03;
             meteorMesh.rotation.y += 0.04;
             
-            // Reducir tamaño gradualmente mientras viaja (de 1.5 a 0.3)
-            const startScale = 1.5;  // Empieza más grande
-            const endScale = 0.3;    // Termina pequeño
+            const startScale = 1.5;
+            const endScale = 0.3;
             const currentScale = startScale - (startScale - endScale) * t;
             meteorGroup.scale.setScalar(currentScale);
             
@@ -234,10 +351,14 @@ function animate() {
             canLaunchMeteor = true;
             meteorGroup.visible = false;
             meteorGroup.position.copy(startPos);
-            meteorGroup.scale.setScalar(2.5); // Restaurar tamaño inicial grande
+            meteorGroup.scale.setScalar(1.5);
             meteorMaterial.emissiveIntensity = 0.5;
             glowSphereMaterial.opacity = 0.9;
             markerMesh.visible = true;
+            
+            if (asteroidsData.length > 0) {
+                updateAsteroidUI(asteroidsData[currentAsteroidIndex]);
+            }
         }
     }
 
@@ -246,7 +367,7 @@ function animate() {
 }
 
 animate();
-
+//Responsiveeee
 function handleWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();

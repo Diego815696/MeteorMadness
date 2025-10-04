@@ -1,15 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-      <script type="module" src="./main.js"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Getting Started with Three.js</title>
-    <style>
-      body {
-        margin: 0;
-      }
-    </style>
+    <title>Simulador de Asteroides NASA</title>
+    <link rel="stylesheet" href="css/estilos.css" />
     <script type="importmap">
       {
         "imports": {
@@ -20,6 +15,15 @@
     </script>
   </head>
   <body>
-  
+    <div id="ui-container">
+      <div id="asteroid-name">🌠 Cargando asteroides...</div>
+      <div id="asteroid-info"></div>
+      <div id="instructions">
+        🖱️ Click en la Tierra para marcar punto de impacto<br>
+        ⌨️ ESPACIO para lanzar asteroide
+      </div>
+    </div>
+    
+    <script type="module" src="./main.js"></script>
   </body>
 </html>
