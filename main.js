@@ -98,13 +98,16 @@ const glowSphere = new THREE.Mesh(glowSphereGeometry, glowSphereMaterial);
 meteorGroup.add(glowSphere);
 
 // Impact target marker
+// Impact target marker
 let impactLat = 30; 
 let impactLon = 45; 
-const earthRadius = 1.001; 
+const earthRadius = 0.0; // Cambiado a 0.0 para apuntar al centro
 
 function getImpactPosition(lat, lon) {
     const latRad = (lat * Math.PI) / 180;
     const lonRad = (lon * Math.PI) / 180;
+    
+    // Apunta directamente al centro de la Tierra
     const x = earthRadius * Math.cos(latRad) * Math.cos(lonRad);
     const y = earthRadius * Math.sin(latRad);
     const z = earthRadius * Math.cos(latRad) * Math.sin(lonRad);
@@ -207,8 +210,16 @@ function animate() {
             meteorGroup.position.lerpVectors(startPos, new THREE.Vector3(impactX, impactY, impactZ), t);
             meteorMesh.rotation.x += 0.03;
             meteorMesh.rotation.y += 0.04;
+            
+            // Reducir tamaño gradualmente mientras viaja (de 1.5 a 0.3)
+            const startScale = 1.5;  // Empieza más grande
+            const endScale = 0.3;    // Termina pequeño
+            const currentScale = startScale - (startScale - endScale) * t;
+            meteorGroup.scale.setScalar(currentScale);
+            
             meteorMaterial.emissiveIntensity = 0.5 + t * 1.5;
             glowSphereMaterial.opacity = 0.9 + t * 0.1;
+            
             if (t >= 0.95) {
                 impacted = true;
                 meteorGroup.visible = false;
@@ -223,7 +234,9 @@ function animate() {
             canLaunchMeteor = true;
             meteorGroup.visible = false;
             meteorGroup.position.copy(startPos);
+            meteorGroup.scale.setScalar(2.5); // Restaurar tamaño inicial grande
             meteorMaterial.emissiveIntensity = 0.5;
+            glowSphereMaterial.opacity = 0.9;
             markerMesh.visible = true;
         }
     }
