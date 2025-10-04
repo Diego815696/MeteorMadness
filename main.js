@@ -4,6 +4,241 @@ import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.161.0/exampl
 import getStarfield from "./src/getStarfield.js"; 
 import { getFresnelMat } from "./src/getFresnelMat.js"; 
 
+// =============================================================================
+// SISTEMA DE DETECCIÓN DE TIERRA/AGUA
+// =============================================================================
+
+class TerrainDetector {
+    constructor() {
+        this.terrainMap = null;
+        this.canvas = document.createElement('canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.loaded = false;
+        this.terrainCache = new Map();
+        this.loadTerrainTexture();
+    }
+    
+    loadTerrainTexture() {
+        const loader = new THREE.TextureLoader();
+        loader.load('./earth-images/02_earthspec1k.jpg', (texture) => {
+            this.terrainMap = texture;
+            this.prepareAnalysis();
+        });
+    }
+    
+    prepareAnalysis() {
+        const img = this.terrainMap.image;
+        this.canvas.width = img.width;
+        this.canvas.height = img.height;
+        this.ctx.drawImage(img, 0, 0);
+        this.loaded = true;
+    }
+    
+    getTerrainType(lat, lon) {
+        if (!this.loaded) return 'unknown';
+        
+        const cacheKey = `${Math.round(lat * 10)},${Math.round(lon * 10)}`;
+        if (this.terrainCache.has(cacheKey)) {
+            return this.terrainCache.get(cacheKey);
+        }
+        
+        const uv = this.latLonToUV(lat, lon);
+        const brightness = this.getBrightnessAtUV(uv.u, uv.v);
+        const terrainType = this.analyzeBrightness(brightness);
+        
+        this.terrainCache.set(cacheKey, terrainType);
+        return terrainType;
+    }
+    
+    latLonToUV(lat, lon) {
+        let adjustedLon = lon;
+        while (adjustedLon < -180) adjustedLon += 360;
+        while (adjustedLon > 180) adjustedLon -= 360;
+        
+        const u = (adjustedLon + 180) / 360;
+        const v = (90 - lat) / 180;
+        
+        return { 
+            u: Math.max(0.001, Math.min(0.999, u)), 
+            v: Math.max(0.001, Math.min(0.999, v)) 
+        };
+    }
+    
+    getBrightnessAtUV(u, v) {
+        const x = Math.floor(u * (this.canvas.width - 1));
+        const y = Math.floor((1 - v) * (this.canvas.height - 1));
+        const imageData = this.ctx.getImageData(x, y, 1, 1);
+        return imageData.data[0];
+    }
+    
+    analyzeBrightness(brightness) {
+        if (brightness > 200) return 'deep_water';
+        if (brightness > 128) return 'shallow_water'; 
+        if (brightness > 50) return 'coast';
+        return 'land';
+    }
+    
+    isReady() {
+        return this.loaded;
+    }
+}
+
+const terrainDetector = new TerrainDetector();
+
+const TerrainEffects = {
+    updateMarkerColor(terrainType) {
+        const colors = {
+            'deep_water': 0x0066ff,
+            'shallow_water': 0x00aaff,  
+            'coast': 0xffff00,
+            'land': 0xff0000,
+            'unknown': 0xff0000
+        };
+        markerMaterial.color.setHex(colors[terrainType]);
+    },
+    
+    getTerrainInfo(lat, lon) {
+        const terrainType = terrainDetector.getTerrainType(lat, lon);
+        const names = {
+            'deep_water': 'Agua Profunda',
+            'shallow_water': 'Agua Poco Profunda',
+            'coast': 'Costa',
+            'land': 'Tierra',
+            'unknown': 'Desconocido'
+        };
+        return {
+            type: terrainType,
+            name: names[terrainType]
+        };
+    },
+    
+    getImpactEffects(terrainType) {
+        const effects = {
+            'deep_water': { craterColor: 0x0066aa, craterOpacity: 0.3 },
+            'shallow_water': { craterColor: 0x0088cc, craterOpacity: 0.5 },
+            'coast': { craterColor: 0x556677, craterOpacity: 0.7 },
+            'land': { craterColor: 0x663300, craterOpacity: 0.9 }
+        };
+        return effects[terrainType] || effects.land;
+    }
+};
+
+// =============================================================================
+// SISTEMA DE MENSAJES EN PANTALLA
+// =============================================================================
+
+// =============================================================================
+// SISTEMA DE ALERTAS VISUALES MEJORADO
+// =============================================================================
+
+// =============================================================================
+// SISTEMA DE ALERTAS VISUALES SIN ICONOS
+// =============================================================================
+
+class ImpactMessage {
+    constructor() {
+        this.element = this.createMessageElement();
+        this.isVisible = false;
+    }
+    
+    createMessageElement() {
+        const messageDiv = document.createElement('div');
+        messageDiv.style.position = 'absolute';
+        messageDiv.style.top = '20px';
+        messageDiv.style.left = '50%';
+        messageDiv.style.transform = 'translateX(-50%)';
+        messageDiv.style.padding = '20px 40px';
+        messageDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.95)';
+        messageDiv.style.color = 'white';
+        messageDiv.style.borderRadius = '12px';
+        messageDiv.style.fontFamily = 'Arial, sans-serif';
+        messageDiv.style.fontSize = '24px';
+        messageDiv.style.fontWeight = 'bold';
+        messageDiv.style.textAlign = 'center';
+        messageDiv.style.zIndex = '1000';
+        messageDiv.style.opacity = '0';
+        messageDiv.style.transition = 'all 0.5s ease';
+        messageDiv.style.pointerEvents = 'none';
+        messageDiv.style.boxShadow = '0 6px 25px rgba(0,0,0,0.7)';
+        messageDiv.style.minWidth = '400px';
+        messageDiv.style.backdropFilter = 'blur(12px)';
+        messageDiv.style.letterSpacing = '1px';
+        
+        document.body.appendChild(messageDiv);
+        return messageDiv;
+    }
+    
+    show(terrainInfo, lat, lon) {
+        const alertStyles = {
+            'deep_water': {
+                border: '4px solid #0066ff',
+                background: 'linear-gradient(135deg, rgba(0,102,255,0.4), rgba(0,0,0,0.95))',
+                title: 'IMPACTO EN AGUA PROFUNDA',
+                color: '#0066ff'
+            },
+            'shallow_water': {
+                border: '4px solid #00aaff',
+                background: 'linear-gradient(135deg, rgba(0,170,255,0.4), rgba(0,0,0,0.95))',
+                title: 'IMPACTO EN AGUA',
+                color: '#00aaff'
+            },
+            'coast': {
+                border: '4px solid #ffaa00', 
+                background: 'linear-gradient(135deg, rgba(255,170,0,0.4), rgba(0,0,0,0.95))',
+                title: 'IMPACTO EN COSTA',
+                color: '#ffaa00'
+            },
+            'land': {
+                border: '4px solid #ff4444',
+                background: 'linear-gradient(135deg, rgba(255,68,68,0.4), rgba(0,0,0,0.95))',
+                title: 'IMPACTO EN TIERRA',
+                color: '#ff4444'
+            },
+            'unknown': {
+                border: '4px solid #888888',
+                background: 'linear-gradient(135deg, rgba(136,136,136,0.4), rgba(0,0,0,0.95))',
+                title: 'IMPACTO EN ZONA DESCONOCIDA',
+                color: '#888888'
+            }
+        };
+        
+        const style = alertStyles[terrainInfo.type] || alertStyles.unknown;
+        
+        const messageHTML = `
+            <div style="color: ${style.color}; margin-bottom: 8px; font-size: 26px;">
+                ${style.title}
+            </div>
+            <div style="font-size: 16px; opacity: 0.9; color: #cccccc; margin-top: 8px;">
+                ${terrainInfo.name.toUpperCase()} • Lat: ${lat.toFixed(1)}° • Lon: ${lon.toFixed(1)}°
+            </div>
+        `;
+        
+        this.element.innerHTML = messageHTML;
+        this.element.style.border = style.border;
+        this.element.style.background = style.background;
+        this.element.style.opacity = '1';
+        this.isVisible = true;
+        
+        // Efecto de entrada
+        this.element.style.transform = 'translateX(-50%) translateY(-20px)';
+        setTimeout(() => {
+            this.element.style.transform = 'translateX(-50%) translateY(0)';
+        }, 50);
+        
+        setTimeout(() => this.hide(), 4000);
+    }
+    
+    hide() {
+        this.element.style.opacity = '0';
+        this.element.style.transform = 'translateX(-50%) translateY(-20px)';
+        this.isVisible = false;
+    }
+}
+    
+
+const impactMessage = new ImpactMessage();
+
+
 const w = window.innerWidth; 
 const h = window.innerHeight; 
 const scene = new THREE.Scene();
@@ -26,7 +261,9 @@ scene.add(earthGroup);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-
+// =============================================================================
+// CREACIÓN DE LA TIERRA
+// =============================================================================
 const detail = 16;
 const loader = new THREE.TextureLoader();
 const geometry = new THREE.IcosahedronGeometry(1, detail);
@@ -163,6 +400,43 @@ const markerMesh = new THREE.Mesh(markerGeometry, markerMaterial);
 markerMesh.position.set(impactX, impactY, impactZ);
 markerMesh.visible = false; 
 earthMesh.add(markerMesh);
+
+// Sistema de cráteres (agregar después del marcador)
+const craterGroup = new THREE.Group();
+earthMesh.add(craterGroup);
+
+const craterGeometry = new THREE.CircleGeometry(0.1, 32);
+const craterMaterial = new THREE.MeshBasicMaterial({
+    color: 0x663300,
+    transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide
+});
+const craterMesh = new THREE.Mesh(craterGeometry, craterMaterial);
+craterMesh.position.set(impactX, impactY, impactZ);
+craterGroup.add(craterMesh);
+
+function showCraterAtImpact(lat, lon) {
+    const terrainInfo = TerrainEffects.getTerrainInfo(lat, lon);
+    const impactEffects = TerrainEffects.getImpactEffects(terrainInfo.type);
+    const pos = getImpactPosition(lat, lon);
+    
+    craterMesh.position.set(pos.x, pos.y, pos.z);
+    craterMaterial.color.setHex(impactEffects.craterColor);
+    craterMaterial.opacity = impactEffects.craterOpacity;
+    
+    const normal = new THREE.Vector3(pos.x, pos.y, pos.z).normalize();
+    craterMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    
+    // MOSTRAR ALERTA DE IMPACTO
+    impactMessage.show(terrainInfo, lat, lon);
+    
+    console.log(`💥 Impacto: ${terrainInfo.name} (Lat: ${lat.toFixed(1)}°, Lon: ${lon.toFixed(1)}°)`);
+}
+
+function hideCrater() {
+    craterMaterial.opacity = 0;
+}
 
 function updateImpactLocation(lat, lon) {
     impactLat = lat;
@@ -311,17 +585,32 @@ async function fetchClosestAsteroids() {
 
 function onMouseClick(event) {
     if (!canLaunchMeteor || impacted) return;
+    
+    // VERIFICAR SI EL DETECTOR ESTÁ LISTO
+    if (!terrainDetector.isReady()) {
+        console.warn('⚠️ Detector de terreno aún no está listo. Espera un momento...');
+        return;
+    }
+    
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObject(earthMesh);
+    
     if (intersects.length > 0) {
         const localPoint = earthMesh.worldToLocal(intersects[0].point.clone());
         const r = Math.sqrt(localPoint.x ** 2 + localPoint.y ** 2 + localPoint.z ** 2);
         const lat = Math.asin(localPoint.y / r) * (180 / Math.PI);
         const lon = Math.atan2(localPoint.z, localPoint.x) * (180 / Math.PI);
+        
         updateImpactLocation(lat, lon);
         markerMesh.visible = true;
+        
+        // ✅ DETECCIÓN DE TERRENO INTEGRADA
+        const terrainInfo = TerrainEffects.getTerrainInfo(lat, lon);
+        TerrainEffects.updateMarkerColor(terrainInfo.type);
+        
+        console.log(`🎯 Objetivo: ${terrainInfo.name} (Lat: ${lat.toFixed(1)}°, Lon: ${lon.toFixed(1)}°)`);
     }
 }
 //Lanzamos el asteroide pulsando el espacio
@@ -386,6 +675,9 @@ function animate() {
             if (t >= 0.95) {
                 impacted = true;
                 meteorGroup.visible = false;
+                
+                // ✅ MOSTRAR CRÁTER Y ALERTA SEGÚN TERRENO
+                showCraterAtImpact(impactLat, impactLon);
             }
         }
     } else {
@@ -401,6 +693,9 @@ function animate() {
             meteorMaterial.emissiveIntensity = 0.5;
             glowSphereMaterial.opacity = 0.9;
             markerMesh.visible = true;
+            
+            // ✅ OCULTAR CRÁTER AL RESET
+            hideCrater();
             
             // Avanzar al siguiente asteroide después del impacto
             currentAsteroidIndex = (currentAsteroidIndex + 1) % asteroidsData.length;
