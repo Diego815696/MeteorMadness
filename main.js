@@ -32,6 +32,7 @@ class TerrainDetector {
         this.canvas.height = img.height;
         this.ctx.drawImage(img, 0, 0);
         this.loaded = true;
+        console.log('Detector de terreno listo');
     }
     
     getTerrainType(lat, lon) {
@@ -44,7 +45,8 @@ class TerrainDetector {
         
         const uv = this.latLonToUV(lat, lon);
         const brightness = this.getBrightnessAtUV(uv.u, uv.v);
-        const terrainType = this.analyzeBrightness(brightness);
+        // SIMPLIFICADO: Solo tierra y agua
+        const terrainType = brightness > 100 ? 'water' : 'land';
         
         this.terrainCache.set(cacheKey, terrainType);
         return terrainType;
@@ -71,13 +73,6 @@ class TerrainDetector {
         return imageData.data[0];
     }
     
-    analyzeBrightness(brightness) {
-        if (brightness > 200) return 'deep_water';
-        if (brightness > 128) return 'shallow_water'; 
-        if (brightness > 50) return 'coast';
-        return 'land';
-    }
-    
     isReady() {
         return this.loaded;
     }
@@ -88,9 +83,7 @@ const terrainDetector = new TerrainDetector();
 const TerrainEffects = {
     updateMarkerColor(terrainType) {
         const colors = {
-            'deep_water': 0x0066ff,
-            'shallow_water': 0x00aaff,  
-            'coast': 0xffff00,
+            'water': 0x0066ff,
             'land': 0xff0000,
             'unknown': 0xff0000
         };
@@ -100,9 +93,7 @@ const TerrainEffects = {
     getTerrainInfo(lat, lon) {
         const terrainType = terrainDetector.getTerrainType(lat, lon);
         const names = {
-            'deep_water': 'Agua Profunda',
-            'shallow_water': 'Agua Poco Profunda',
-            'coast': 'Costa',
+            'water': 'Agua',
             'land': 'Tierra',
             'unknown': 'Desconocido'
         };
@@ -114,9 +105,7 @@ const TerrainEffects = {
     
     getImpactEffects(terrainType) {
         const effects = {
-            'deep_water': { craterColor: 0x0066aa, craterOpacity: 0.3 },
-            'shallow_water': { craterColor: 0x0088cc, craterOpacity: 0.5 },
-            'coast': { craterColor: 0x556677, craterOpacity: 0.7 },
+            'water': { craterColor: 0x0066aa, craterOpacity: 0.4 },
             'land': { craterColor: 0x663300, craterOpacity: 0.9 }
         };
         return effects[terrainType] || effects.land;
@@ -138,7 +127,6 @@ const TerrainEffects = {
 class ImpactMessage {
     constructor() {
         this.element = this.createMessageElement();
-        this.isVisible = false;
     }
     
     createMessageElement() {
@@ -162,47 +150,28 @@ class ImpactMessage {
         messageDiv.style.boxShadow = '0 6px 25px rgba(0,0,0,0.7)';
         messageDiv.style.minWidth = '400px';
         messageDiv.style.backdropFilter = 'blur(12px)';
-        messageDiv.style.letterSpacing = '1px';
         
         document.body.appendChild(messageDiv);
         return messageDiv;
     }
     
-    show(terrainInfo, lat, lon) {
+    show(terrainInfo, lat, lon) {/*
         const alertStyles = {
-            'deep_water': {
+            'water': {
                 border: '4px solid #0066ff',
                 background: 'linear-gradient(135deg, rgba(0,102,255,0.4), rgba(0,0,0,0.95))',
-                title: 'IMPACTO EN AGUA PROFUNDA',
-                color: '#0066ff'
-            },
-            'shallow_water': {
-                border: '4px solid #00aaff',
-                background: 'linear-gradient(135deg, rgba(0,170,255,0.4), rgba(0,0,0,0.95))',
                 title: 'IMPACTO EN AGUA',
-                color: '#00aaff'
-            },
-            'coast': {
-                border: '4px solid #ffaa00', 
-                background: 'linear-gradient(135deg, rgba(255,170,0,0.4), rgba(0,0,0,0.95))',
-                title: 'IMPACTO EN COSTA',
-                color: '#ffaa00'
+                color: '#0066ff'
             },
             'land': {
                 border: '4px solid #ff4444',
                 background: 'linear-gradient(135deg, rgba(255,68,68,0.4), rgba(0,0,0,0.95))',
                 title: 'IMPACTO EN TIERRA',
                 color: '#ff4444'
-            },
-            'unknown': {
-                border: '4px solid #888888',
-                background: 'linear-gradient(135deg, rgba(136,136,136,0.4), rgba(0,0,0,0.95))',
-                title: 'IMPACTO EN ZONA DESCONOCIDA',
-                color: '#888888'
             }
         };
         
-        const style = alertStyles[terrainInfo.type] || alertStyles.unknown;
+        const style = alertStyles[terrainInfo.type] || alertStyles.land;
         
         const messageHTML = `
             <div style="color: ${style.color}; margin-bottom: 8px; font-size: 26px;">
@@ -217,10 +186,8 @@ class ImpactMessage {
         this.element.style.border = style.border;
         this.element.style.background = style.background;
         this.element.style.opacity = '1';
-        this.isVisible = true;
-        
-        // Efecto de entrada
         this.element.style.transform = 'translateX(-50%) translateY(-20px)';
+        */
         setTimeout(() => {
             this.element.style.transform = 'translateX(-50%) translateY(0)';
         }, 50);
@@ -231,10 +198,8 @@ class ImpactMessage {
     hide() {
         this.element.style.opacity = '0';
         this.element.style.transform = 'translateX(-50%) translateY(-20px)';
-        this.isVisible = false;
     }
 }
-    
 
 const impactMessage = new ImpactMessage();
 
@@ -250,6 +215,215 @@ document.body.appendChild(renderer.domElement);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 
+
+// =============================================================================
+// SISTEMA DE CONSECUENCIAS DE IMPACTO
+// =============================================================================
+
+// Crear el cuadro de consecuencias (agregar después de crear el renderer)
+const consequencesBox = document.createElement('div');
+consequencesBox.id = 'consequences-box';
+consequencesBox.style.cssText = `
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 20px 25px;
+    border-radius: 8px;
+    max-width: 450px;
+    font-family: 'Arial', sans-serif;
+    border-left: 4px solid #ff4444;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    display: none;
+    line-height: 1.6;
+    font-size: 14px;
+`;
+document.body.appendChild(consequencesBox);
+// Función para determinar el rango de tamaño
+function getSizeCategory(diameter) {
+    if (diameter < 50) return 'disintegrated';
+    if (diameter < 10) return 'tiny';
+    if (diameter < 50) return 'small';
+    if (diameter < 300) return 'medium';
+    if (diameter < 1000) return 'large';
+    return 'catastrophic';
+}
+
+// Función para obtener el texto de consecuencias
+function getConsequencesText(diameter, terrainType) {
+    const size = getSizeCategory(diameter);
+    const isOcean = (terrainType === 'water');
+    
+    // CASO ESPECIAL: Desintegración
+    if (size === 'disintegrated') {
+        return {
+            title: 'DESINTEGRACIÓN ATMOSFÉRICA',
+            severity: 'SEGURO',
+            severityColor: '#4CAF50',
+            content: `<strong>Diámetro inicial:</strong> ${diameter.toFixed(1)} m<br><br>
+                El asteroide se ha <strong>desintegrado completamente</strong> en la atmósfera antes de impactar la superficie.<br><br>
+                <strong>Efectos:</strong><br>
+                • Airburst atmosférico sin llegada al suelo<br>
+                • Posible estallido luminoso visible<br>
+                • Sin daños en superficie<br>
+                • Posibles fragmentos pequeños inofensivos<br><br>`
+        };
+    }
+    
+    // IMPACTOS EN EL MAR
+    if (isOcean) {
+        if (size === 'small') { // 50-300m
+            return {
+                title: 'IMPACTO OCEÁNICO REGIONAL',
+                severity: 'PELIGRO REGIONAL',
+                severityColor: '#FF9800',
+                content: `<strong>Diámetro al impactar:</strong> ${diameter.toFixed(1)/2} m<br>
+                    <strong>Localización:</strong> Océano<br><br>
+                    <strong>Consecuencias inmediatas:</strong><br>
+                    • Gran volumen de agua desplazado<br>
+                    • Formación de cráter submarino<br>
+                    • Columna de agua que colapsa<br><br>
+                    <strong>Tsunami regional:</strong><br>
+                    • Olas importantes propagándose decenas-cientos de km<br>
+                    • Inundaciones costeras significativas<br>
+                    • Altura de ola dependiente de profundidad y distancia<br>`
+            };
+        }
+        
+        if (size === 'medium') { // 300m-1km
+            return {
+                title: 'MEGA-TSUNAMI OCEÁNICO',
+                severity: 'CATÁSTROFE CONTINENTAL',
+                severityColor: '#FF5722',
+                content: `<strong>Diámetro al impactar:</strong> ${diameter.toFixed(1/2)} m<br>
+                    <strong>Localización:</strong> Océano<br><br>
+                    <strong>Impacto devastador:</strong><br>
+                    • Expulsión masiva de agua, rocas y vapor<br>
+                    • Olas de cientos de metros cerca del impacto<br>
+                    • Tsunami cruzando cuencas oceánicas completas<br><br>
+                    <strong>Efectos globales:</strong><br>
+                    • Inundaciones costeras generalizadas<br>
+                    • Destrucción de infraestructuras en múltiples países<br>
+                    • Millones de personas afectadas<br>`
+            };
+        }
+        
+        if (size === 'large' || size === 'catastrophic') { // >1km
+            return {
+                title: 'EXTINCIÓN POR MEGA-IMPACTO OCEÁNICO',
+                severity: 'EXTINCIÓN GLOBAL',
+                severityColor: '#D32F2F',
+                content: `<strong>Diámetro al impactar:</strong> ${diameter.toFixed(1/2)} m<br>
+                    <strong>Localización:</strong> Océano<br><br>
+                    <strong>Catástrofe planetaria:</strong><br>
+                    • Tsunami transoceánico con olas colosales<br>
+                    • Todo litoral del océano gravemente devastado<br>
+                    • Olas de varios kilómetros de altura inicialmente<br><br>
+                    <strong>Efectos de extinción masiva:</strong><br>
+                    • Eyección masiva de material a la atmósfera<br>
+                    • Invierno de impacto global (bloqueo solar)<br>
+                    • Colapso de ecosistemas marinos y terrestres<br>`
+            };
+        }
+    }
+    
+    // IMPACTOS EN TIERRA
+    else {
+        if (size === 'small') { // 50-300m
+            return {
+                title: 'IMPACTO TERRESTRE DEVASTADOR',
+                severity: 'CATÁSTROFE REGIONAL',
+                severityColor: '#FF9800',
+                content: `<strong>Diámetro al impactar:</strong> ${diameter.toFixed(1/2)} m<br>
+                    <strong>Localización:</strong> Tierra<br><br>
+                    <strong>Impacto directo:</strong><br>
+                    • Cráteres grandes (varios km de diámetro)<br>
+                    • Onda de choque regional intensa<br>
+                    • Terremoto local por energía liberada<br><br>
+                    <strong>Efectos regionales:</strong><br>
+                    • Daño serio en cientos de km²<br>
+                    • Incendios masivos por radiación térmica<br>
+                    • Destrucción de ciudades en zona de impacto<br>
+                    • Consecuencias económicas enormes<br>`
+            };
+        }
+        
+        if (size === 'medium') { // 300m-1km
+            return {
+                title: 'IMPACTO CONTINENTAL',
+                severity: 'DESASTRE CONTINENTAL',
+                severityColor: '#FF5722',
+                content: `<strong>Diámetro al impactar:</strong> ${diameter.toFixed(1/2)} m<br>
+                    <strong>Localización:</strong> Tierra<br><br>
+                    <strong>Devastación masiva:</strong><br>
+                    • Cráteres enormes (decenas de km)<br>
+                    • Inyección masiva de polvo y aerosoles<br>
+                    • Terremotos fuertes (>7.0) en área extensa<br>
+                    • Tsunamis secundarios si hay océano cercano<br><br>
+                    <strong>Efectos continentales:</strong><br>
+                    • Enfriamiento regional por bloqueo solar<br>
+                    • Reducción drástica de radiación solar durante años<br>
+                    • Colapso de cosechas en continente afectado<br>`
+            };
+        }
+        
+        if (size === 'large' || size === 'catastrophic') { // >1km
+            return {
+                title: 'EXTINCIÓN POR MEGA-IMPACTO TERRESTRE',
+                severity: 'EXTINCIÓN GLOBAL',
+                severityColor: '#D32F2F',
+                content: `<strong>Diámetro al impactar:</strong> ${diameter.toFixed(1/2)} m<br>
+                    <strong>Localización:</strong> Tierra<br><br>
+                    <strong>Apocalipsis planetario:</strong><br>
+                    • Cráter de cientos de kilómetros<br>
+                    • Incendios globales instantáneos<br>
+                    • Inyección masiva de polvo/hollín bloqueando sol<br>
+                    • Terremotos >9.0 en todo el planeta<br><br>
+                    <strong>Extinción masiva:</strong><br>
+                    • Colapso total de fotosíntesis mundial<br>
+                    • Invierno de impacto durante años/décadas<br>
+                    • Hambrunas globales inevitables<br>
+                    • Colapso ecológico completo<br>`
+            };
+        }
+    }
+    
+    // Fallback por seguridad
+    return {
+        title: 'IMPACTO DESCONOCIDO',
+        severity: 'EVALUANDO',
+        severityColor: '#9E9E9E',
+        content: 'Calculando consecuencias del impacto...'
+    };
+}
+
+// Función para mostrar las consecuencias
+function showConsequences(diameter, terrainType) {
+    const data = getConsequencesText(diameter, terrainType);
+    
+    consequencesBox.innerHTML = `
+        <div style="border-bottom: 2px solid ${data.severityColor}; padding-bottom: 10px; margin-bottom: 15px;">
+            <div style="color: ${data.severityColor}; font-weight: bold; font-size: 11px; letter-spacing: 1px; margin-bottom: 5px;">
+                ${data.severity}
+            </div>
+            <div style="font-size: 16px; font-weight: bold; color: #fff;">
+                ${data.title}
+            </div>
+        </div>
+        <div style="color: #ddd;">
+            ${data.content}
+        </div>
+    `;
+    
+    consequencesBox.style.display = 'block';
+}
+
+// Función para ocultar las consecuencias
+function hideConsequences() {
+    consequencesBox.style.display = 'none';
+}
+
 // UI Elements
 const asteroidNameDiv = document.getElementById('asteroid-name');
 const asteroidInfoDiv = document.getElementById('asteroid-info');
@@ -261,6 +435,17 @@ scene.add(earthGroup);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
+
+// LÍMITES MÁS ESTRICTOS
+controls.minDistance = 2;     // No puedes acercarte más de 2 unidades
+controls.maxDistance = 10;    // No puedes alejarte más de 10 unidades
+
+// Restringir ángulos para mejor experiencia
+controls.minPolarAngle = 0.1;     // Evitar ver exactamente desde los polos
+controls.maxPolarAngle = Math.PI - 0.1; // Evitar ver desde abajo exactamente
+
+// Opcional: hacer que la cámara siempre mire hacia la Tierra
+controls.enableRotate = true;
 // =============================================================================
 // CREACIÓN DE LA TIERRA
 // =============================================================================
@@ -428,8 +613,11 @@ function showCraterAtImpact(lat, lon) {
     const normal = new THREE.Vector3(pos.x, pos.y, pos.z).normalize();
     craterMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
     
-    // MOSTRAR ALERTA DE IMPACTO
+    // ✅ MOSTRAR MENSAJE DE IMPACTO
     impactMessage.show(terrainInfo, lat, lon);
+    
+    // MOSTRAR CONSECUENCIAS
+    showConsequences(initialDiameter, terrainInfo.type);
     
     console.log(`💥 Impacto: ${terrainInfo.name} (Lat: ${lat.toFixed(1)}°, Lon: ${lon.toFixed(1)}°)`);
 }
@@ -479,7 +667,7 @@ let currentAsteroidName = '';
 
 function updateAsteroidUI(asteroid, progress = 0) {
     if (!asteroid) {
-        asteroidNameDiv.innerHTML = '🌠 No hay asteroides disponibles';
+        asteroidNameDiv.innerHTML = 'No hay asteroides disponibles';
         asteroidInfoDiv.innerHTML = '';
         return;
     }
@@ -526,12 +714,12 @@ function updateAsteroidUI(asteroid, progress = 0) {
     const diameter = currentDiameter.toFixed(0);
     const velocity = currentVelocity.toLocaleString(undefined, {maximumFractionDigits: 0});
     
-    asteroidNameDiv.innerHTML = `🌠 ${currentAsteroidName}`;
+    asteroidNameDiv.innerHTML = `${currentAsteroidName}`;
     asteroidInfoDiv.innerHTML = `
-        📏 Distancia: ${distance} km<br>
-        📐 Diámetro: ~${diameter} m<br>
-        🚀 Velocidad: ${velocity} km/h<br>
-        📅 Aproximación: ${currentAsteroidDate}<br>
+        Distancia: ${distance} km<br>
+        Diámetro: ~${diameter} m<br>
+        Velocidad: ${velocity} km/h<br>
+        Aproximación: ${currentAsteroidDate}<br>
     `;
     //Hemos quitado el print de si impacta
 }
@@ -571,29 +759,28 @@ async function fetchClosestAsteroids() {
             const asteroidName = asteroidsData[0].name.replace(/[()]/g, '').substring(0, 30);
             updateAsteroidNameSprite(asteroidName);
         } else {
-            asteroidNameDiv.innerHTML = '🌠 No se encontraron asteroides';
+            asteroidNameDiv.innerHTML = 'No se encontraron asteroides';
             asteroidInfoDiv.innerHTML = '';
         }
         
         
     } catch (error) {
-        console.error('❌ Error al obtener datos de asteroides:', error);
-        asteroidNameDiv.innerHTML = '❌ Error al cargar asteroides';
+        console.error('Error al obtener datos de asteroides:', error);
+        asteroidNameDiv.innerHTML = 'Error al cargar asteroides';
         asteroidInfoDiv.innerHTML = 'Intenta recargar la página';
     }
 }
-
 function onMouseClick(event) {
     if (!canLaunchMeteor || impacted) return;
     
-    // VERIFICAR SI EL DETECTOR ESTÁ LISTO
     if (!terrainDetector.isReady()) {
-        console.warn('⚠️ Detector de terreno aún no está listo. Espera un momento...');
+        console.warn(' Detector de terreno aún no está listo');
         return;
     }
     
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObject(earthMesh);
     
@@ -606,13 +793,13 @@ function onMouseClick(event) {
         updateImpactLocation(lat, lon);
         markerMesh.visible = true;
         
-        // ✅ DETECCIÓN DE TERRENO INTEGRADA
         const terrainInfo = TerrainEffects.getTerrainInfo(lat, lon);
         TerrainEffects.updateMarkerColor(terrainInfo.type);
         
-        console.log(`🎯 Objetivo: ${terrainInfo.name} (Lat: ${lat.toFixed(1)}°, Lon: ${lon.toFixed(1)}°)`);
+        console.log(`Objetivo: ${terrainInfo.name} (Lat: ${lat.toFixed(1)}°, Lon: ${lon.toFixed(1)}°)`);
     }
 }
+
 //Lanzamos el asteroide pulsando el espacio
 function onKeyPress(event) {
     if (event.code === 'Space' && canLaunchMeteor && !impacted && asteroidsData.length > 0) {
@@ -621,6 +808,7 @@ function onKeyPress(event) {
         meteorGroup.visible = true;
         meteorGroup.position.copy(startPos);
         markerMesh.visible = false;
+        hideConsequences();
         
         // Inicializar los valores del asteroide actual
         updateAsteroidUI(asteroidsData[currentAsteroidIndex], 0);
@@ -676,7 +864,7 @@ function animate() {
                 impacted = true;
                 meteorGroup.visible = false;
                 
-                // ✅ MOSTRAR CRÁTER Y ALERTA SEGÚN TERRENO
+                // MOSTRAR CRÁTER Y ALERTA SEGÚN TERRENO
                 showCraterAtImpact(impactLat, impactLon);
             }
         }
@@ -694,7 +882,7 @@ function animate() {
             glowSphereMaterial.opacity = 0.9;
             markerMesh.visible = true;
             
-            // ✅ OCULTAR CRÁTER AL RESET
+            // OCULTAR CRÁTER AL RESET
             hideCrater();
             
             // Avanzar al siguiente asteroide después del impacto
