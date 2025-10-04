@@ -4,15 +4,191 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Simulador de Asteroides NASA</title>
-    <link rel="stylesheet" href="css/estilos.css" />
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
-          "jsm/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
-        }
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
       }
-    </script>
+
+      body {
+        font-family: 'Arial', sans-serif;
+        overflow: hidden;
+      }
+
+      #ui-container {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        color: white;
+        font-family: 'Courier New', monospace;
+        z-index: 100;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 15px;
+        border-radius: 8px;
+        max-width: 350px;
+      }
+
+      #asteroid-name {
+        font-size: 1.3em;
+        font-weight: bold;
+        margin-bottom: 10px;
+        color: #ff6b35;
+      }
+
+      #asteroid-info {
+        font-size: 0.95em;
+        line-height: 1.6;
+        margin-bottom: 10px;
+      }
+
+      #instructions {
+        font-size: 0.85em;
+        opacity: 0.8;
+        border-top: 1px solid rgba(255, 255, 255, 0.3);
+        padding-top: 10px;
+        margin-top: 10px;
+      }
+
+      /* Botón de defensa planetaria */
+      #defense-button {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        z-index: 100;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        font-size: 1em;
+        font-weight: bold;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        transition: all 0.3s ease;
+      }
+
+      #defense-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+      }
+
+      #defense-button:active {
+        transform: translateY(0);
+      }
+
+      /* Panel desplegable */
+      #defense-panel {
+        position: absolute;
+        top: 70px;
+        right: 20px;
+        width: 400px;
+        max-height: 80vh;
+        background: rgba(15, 15, 35, 0.95);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(102, 126, 234, 0.3);
+        border-radius: 12px;
+        padding: 20px;
+        z-index: 99;
+        overflow-y: auto;
+        transform: translateX(450px);
+        opacity: 0;
+        transition: all 0.4s ease;
+        box-shadow: -5px 5px 30px rgba(0, 0, 0, 0.5);
+      }
+
+      #defense-panel.active {
+        transform: translateX(0);
+        opacity: 1;
+      }
+
+      #defense-panel h2 {
+        color: #ff6b35;
+        font-size: 1.5em;
+        margin-bottom: 15px;
+        text-align: center;
+        border-bottom: 2px solid rgba(102, 126, 234, 0.5);
+        padding-bottom: 10px;
+      }
+
+      .defense-method {
+        background: rgba(255, 255, 255, 0.05);
+        border-left: 4px solid #667eea;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+        transition: all 0.3s ease;
+      }
+
+      .defense-method:hover {
+        background: rgba(255, 255, 255, 0.1);
+        transform: translateX(5px);
+      }
+
+      .defense-method h3 {
+        color: #ffd93d;
+        font-size: 1.1em;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+      }
+
+      .defense-method .number {
+        display: inline-block;
+        background: #667eea;
+        color: white;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        text-align: center;
+        line-height: 24px;
+        font-size: 0.9em;
+        margin-right: 10px;
+      }
+
+      .defense-method p {
+        color: #ddd;
+        font-size: 0.9em;
+        line-height: 1.6;
+        margin-bottom: 8px;
+      }
+
+      .defense-method .eficaz {
+        color: #4ade80;
+        font-weight: bold;
+      }
+
+      .defense-method .limitaciones {
+        color: #f87171;
+        font-weight: bold;
+      }
+
+      /* Scrollbar personalizada */
+      #defense-panel::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      #defense-panel::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+      }
+
+      #defense-panel::-webkit-scrollbar-thumb {
+        background: #667eea;
+        border-radius: 10px;
+      }
+
+      #defense-panel::-webkit-scrollbar-thumb:hover {
+        background: #764ba2;
+      }
+      .defense-method .description {
+        color: #bbb;
+        font-style: italic;
+        margin-bottom: 12px;
+        padding-left: 5px;
+        border-left: 2px solid rgba(255, 215, 61, 0.3);
+      }
+    </style>
   </head>
   <body>
     <div id="ui-container">
@@ -23,7 +199,68 @@
         ⌨️ ESPACIO para lanzar asteroide
       </div>
     </div>
-    
+
+    <!-- Botón de defensa planetaria -->
+    <button id="defense-button">🛡️ Sistemas de mitigación</button>
+
+    <!-- Panel desplegable -->
+    <div id="defense-panel">
+      <h2>🚀 Métodos de Defensa Planetaria</h2>
+      
+      <div class="defense-method">
+        <h3><span class="number">1</span>Impacto Cinético</h3>
+        <p class="description">Consiste en lanzar una nave espacial a alta velocidad contra el asteroide para cambiar su trayectoria mediante transferencia de momento. Técnica probada por la misión DART de NASA en 2022.</p>
+        <p><span class="eficaz">Eficaz contra:</span> Cuerpos monolíticos rocosos y metálicos, bloques grandes de escombros si el impacto puede acoplarse al meteorito.</p>
+        <p><span class="limitaciones">Limitaciones:</span> Menos efectivo en cuerpos muy porosos o de baja cohesión — transferencia de momento reducida; requiere tiempo y precisión de encuentro.</p>
+      </div>
+
+      <div class="defense-method">
+        <h3><span class="number">2</span>Tractor Gravitacional</h3>
+        <p class="description">Una nave espacial se posiciona cerca del asteroide (sin tocarlo) y usa atracción gravitacional mutua para desviarlo gradualmente durante años. Requiere propulsión continua para mantener la posición.</p>
+        <p><span class="eficaz">Eficaz contra:</span> Cualquier objeto con masa suficiente para que una pequeña desviación acumulativa funcione, ideal para asteroides pequeños a medianos y de composición desconocida.</p>
+        <p><span class="limitaciones">Limitaciones:</span> Extremadamente lento; exige larga antelación y estabilidad orbital.</p>
+      </div>
+
+      <div class="defense-method">
+        <h3><span class="number">3</span>Explosivo Nuclear</h3>
+        <p class="description">Detonación nuclear cercana o en superficie del asteroide para vaporizarlo parcialmente o cambiar su trayectoria mediante la onda expansiva. Último recurso para amenazas inminentes de gran tamaño.</p>
+        <p><span class="eficaz">Eficaz contra:</span> Asteroides grandes y de núcleo metálico o rocoso monolítico cuando no existe tiempo para alternativas lentas.</p>
+        <p><span class="limitaciones">Limitaciones:</span> Fragmentación peligrosa si son escombros o porosos, necesita mucha precisión; requisito de alto nivel político y técnico.</p>
+      </div>
+
+      <div class="defense-method">
+        <h3><span class="number">4</span>Motor de Cohete Convencional</h3>
+        <p class="description">Una nave aterriza y se ancla al asteroide, luego usa sus propulsores para empujarlo gradualmente fuera de su trayectoria. Requiere aterrizaje preciso y mecanismos de anclaje robustos.</p>
+        <p><span class="eficaz">Eficaz contra:</span> Objetos pequeños a medianos donde se puede acoplar la nave.</p>
+        <p><span class="limitaciones">Limitaciones:</span> Anclaje complejo en escombros; coste de Δv y masa; no práctico para cuerpos muy grandes.</p>
+      </div>
+    </div>
+
+    <script type="module">
+      // Toggle del panel de defensa
+      const defenseButton = document.getElementById('defense-button');
+      const defensePanel = document.getElementById('defense-panel');
+
+      defenseButton.addEventListener('click', () => {
+        defensePanel.classList.toggle('active');
+      });
+
+      // Cerrar panel al hacer click fuera
+      document.addEventListener('click', (event) => {
+        if (!defensePanel.contains(event.target) && !defenseButton.contains(event.target)) {
+          defensePanel.classList.remove('active');
+        }
+      });
+    </script>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+          "jsm/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+        }
+      }
+    </script>
     <script type="module" src="./main.js"></script>
   </body>
 </html>

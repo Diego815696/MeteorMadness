@@ -196,30 +196,70 @@ const API_KEY = 'IqAp5gerc5b0ohBPVXMinTc0IQfHmSMQmdJYm6Lw';
 let asteroidsData = [];
 let currentAsteroidIndex = 0;
 
+// Variables para almacenar los valores iniciales del asteroide actual
+let initialDistance = 0;
+let initialDiameter = 0;
+let initialVelocity = 0;
+let currentAsteroidDate = '';
+let currentAsteroidName = '';
 
-
-function updateAsteroidUI(asteroid) {
+function updateAsteroidUI(asteroid, progress = 0) {
     if (!asteroid) {
         asteroidNameDiv.innerHTML = '🌠 No hay asteroides disponibles';
         asteroidInfoDiv.innerHTML = '';
         return;
     }
+    
     // Pillamos los datos que hemos recibido de la api y los guardamos en variables para mostrar en el UI
     const name = asteroid.name.replace(/[()]/g, '');
-    const distance = parseFloat(asteroid.close_approach_data[0].miss_distance.kilometers).toLocaleString();
-    const diameter = asteroid.estimated_diameter.meters.estimated_diameter_max.toFixed(0);
-    const velocity = parseFloat(asteroid.close_approach_data[0].relative_velocity.kilometers_per_hour).toLocaleString();
     const date = asteroid.close_approach_data[0].close_approach_date;
-    const isDangerous = asteroid.is_potentially_hazardous_asteroid;
     
-    asteroidNameDiv.innerHTML = `🌠 ${name}`;
+    // Si es un asteroide nuevo (progress = 0), guardar valores iniciales
+    if (progress === 0) {
+        initialDistance = parseFloat(asteroid.close_approach_data[0].miss_distance.kilometers);
+        initialDiameter = parseFloat(asteroid.estimated_diameter.meters.estimated_diameter_max);
+        initialVelocity = parseFloat(asteroid.close_approach_data[0].relative_velocity.kilometers_per_hour);
+        currentAsteroidDate = date;
+        currentAsteroidName = name;
+    }
+    
+    // Calcular valores progresivos durante la animación
+    // La animación termina en t=0.95, así que escalamos el progreso para que llegue a 0 exactamente
+    const adjustedProgress = Math.min(progress / 0.95, 1);
+    let currentDistance = initialDistance * (1 - adjustedProgress);
+    
+    let currentDiameter;
+    if (initialDiameter > 50) {
+        // Si es mayor de 50m, reducir hasta el 50% de su masa inicial
+        currentDiameter = initialDiameter - (initialDiameter * 0.5 * adjustedProgress);
+    } else {
+        // Si es menor o igual a 50m, reducir hasta 0 a mitad de la animación
+        if (adjustedProgress >= 0.95) {
+            currentDiameter = 0;
+        } else {
+            currentDiameter = initialDiameter * (1 - adjustedProgress); // Se desintegra en la primera mitad
+        }
+    }
+    
+    // La velocidad aumenta progresivamente al entrar en la atmósfera
+    // Aumenta hasta 1.5x la velocidad inicial (simula aceleración gravitatoria)
+    // Velocidad de la luz: ~1,079,252,848 km/h (nunca nos acercaremos a esto con asteroides)
+    const maxVelocityMultiplier = 1.5;
+    let currentVelocity = initialVelocity * (1 + (adjustedProgress * (maxVelocityMultiplier - 1)));
+    
+    // Formatear valores para mostrar
+    const distance = currentDistance.toLocaleString(undefined, {maximumFractionDigits: 0});
+    const diameter = currentDiameter.toFixed(0);
+    const velocity = currentVelocity.toLocaleString(undefined, {maximumFractionDigits: 0});
+    
+    asteroidNameDiv.innerHTML = `🌠 ${currentAsteroidName}`;
     asteroidInfoDiv.innerHTML = `
         📏 Distancia: ${distance} km<br>
         📐 Diámetro: ~${diameter} m<br>
         🚀 Velocidad: ${velocity} km/h<br>
-        📅 Aproximación: ${date}<br>
-        ${isDangerous ? '⚠️ <span style="color: #ff4444;">POTENCIALMENTE PELIGROSO</span>' : '✅ <span style="color: #44ff44;">Seguro</span>'}
+        📅 Aproximación: ${currentAsteroidDate}<br>
     `;
+    //Hemos quitado el print de si impacta
 }
 
 //Filtramos para obtener los asteroides mascercanos a la tierra ya que son los mas peligrosos
@@ -293,10 +333,11 @@ function onKeyPress(event) {
         meteorGroup.position.copy(startPos);
         markerMesh.visible = false;
         
+        // Inicializar los valores del asteroide actual
+        updateAsteroidUI(asteroidsData[currentAsteroidIndex], 0);
+        
         const asteroidName = asteroidsData[currentAsteroidIndex].name.replace(/[()]/g, '').substring(0, 30);
         updateAsteroidNameSprite(asteroidName);
-        
-        currentAsteroidIndex = (currentAsteroidIndex + 1) % asteroidsData.length;
     }
 }
 
@@ -337,6 +378,11 @@ function animate() {
             meteorMaterial.emissiveIntensity = 0.5 + t * 1.5;
             glowSphereMaterial.opacity = 0.9 + t * 0.1;
             
+            // Actualizar UI con valores progresivos durante la animación
+            if (asteroidsData.length > 0) {
+                updateAsteroidUI(asteroidsData[currentAsteroidIndex], t);
+            }
+            
             if (t >= 0.95) {
                 impacted = true;
                 meteorGroup.visible = false;
@@ -356,8 +402,11 @@ function animate() {
             glowSphereMaterial.opacity = 0.9;
             markerMesh.visible = true;
             
+            // Avanzar al siguiente asteroide después del impacto
+            currentAsteroidIndex = (currentAsteroidIndex + 1) % asteroidsData.length;
+            
             if (asteroidsData.length > 0) {
-                updateAsteroidUI(asteroidsData[currentAsteroidIndex]);
+                updateAsteroidUI(asteroidsData[currentAsteroidIndex], 0);
             }
         }
     }
